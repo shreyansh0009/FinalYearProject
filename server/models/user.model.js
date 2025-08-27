@@ -37,6 +37,15 @@ const userSchema = mongoose.Schema(
     refreshToken: {
       type: String,
     },
+    department: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
+
+      // This field is only required if the user is an ISSUER or a STUDENT
+      required: function () {
+        return this.userType === "ISSUER" || this.userType === "STUDENT";
+      },
+    },
   },
   { timestamps: true }
 );
