@@ -4,14 +4,18 @@ pragma solidity ^0.8.28;
 // import "hardhat/console.sol";
 
 contract MyContract {
-    string public message;
+    uint count;
 
-    constructor(string memory _message) {
-        message = _message;
+    constructor() {
+        count = 0;
     }
 
-    function setMessage(string memory _newMessage) public {
-        message = _newMessage;
+    function getCount() public view returns(uint) {
+        return count;
+    }
+
+    function incrementCount() public {
+      count = count + 1;
     }
 }
 
