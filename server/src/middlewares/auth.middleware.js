@@ -35,3 +35,11 @@ export const verifyJwt = asyncHandler(async (req, res, next) => {
     throw new apiError(401, error?.message || "Invalid Token");
   }
 });
+
+export const isIssuer = (req, res, next) => {
+    if (req.user?.userType !== "ISSUER") {
+        return res.status(403).json({ message: "Access denied. Issuer role required." });
+    }
+    next();
+};
+

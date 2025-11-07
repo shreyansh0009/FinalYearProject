@@ -8,30 +8,50 @@ const registerUser = asyncHandler(async (req, res) => {
   const { userName, email, fullName, password, userType, department } =
     req.body;
 
-  //2nd approach, best approach, checking for empty fields
-  if (
-    [userName, email, fullName, password, userType, department].some(
-      (field) => field?.trim() === ""
-    )
-  ) {
-    throw new apiError(400, "All fields are required and cannot be empty!");
+  // 2. Validate core fields
+  const coreFields = [userName, email, fullName, password, userType];
+  if (coreFields.some((field) => !field || field.trim() === "")) {
+    throw new apiError(
+      400,
+      "Username, email, fullName, password, and userType are required"
+    );
   }
 
+  // Conditionally validate 'department'
+  if (
+    (userType === "STUDENT" || userType === "ISSUER") &&
+    (!department || department.trim() === "")
+  ) {
+    throw new apiError(400, "Department is required for Students and Issuers");
+  }
+
+  // Normalize inputs *before* querying
+  const normalizedUsername = userName.toLowerCase();
+  const normalizedEmail = email.toLowerCase();
+
   //iii. checking user exists or not?
-  const isExists = await User.findOne({ $or: [{ userName }, { email }] });
+  const isExists = await User.findOne({
+    $or: [{ userName: normalizedUsername }, { email: normalizedEmail }],
+  });
   if (isExists) {
     throw new apiError(409, "User already exists!");
   }
 
   //v. now creating user in database.
-  const user = await User.create({
+  const userToCreate = {
     fullName,
-    email,
+    email: normalizedEmail,
     password,
-    username: userName.toLowerCase(),
+    username: normalizedUsername,
     userType,
-    department,
-  });
+  };
+
+  // Only add department if it's provided and relevant
+  if (userType !== "ADMIN" && department) {
+    userToCreate.department = department;
+  }
+
+  const user = await User.create(userToCreate);
 
   //iv. validating user created or not?
   const createdUser = await User.findById(user._id)

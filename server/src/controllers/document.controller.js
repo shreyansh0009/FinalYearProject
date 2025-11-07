@@ -3,6 +3,8 @@ import { Document } from "../models/document.model.js"
 import crypto from "crypto";
 import fs from "fs";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { apiError } from "../utils/apiError.js";
+import { apiResponse } from "../utils/apiResponse.js";
 
 
 const uploadDocument = asyncHandler(async (req, res) => {
@@ -52,4 +54,72 @@ const uploadDocument = asyncHandler(async (req, res) => {
     }
 })
 
-export { uploadDocument };
+
+
+const getPendingDocuments = asyncHandler(async (req, res) => {
+    // 1. Get the issuer's department from the req.user (provided by verifyJWT)
+    const issuerDepartment = req.user.department;
+
+    // 2. Find all documents that are "PENDING" AND match the issuer's department
+    const pendingDocuments = await Document.find({
+        department: issuerDepartment,
+        status: "PENDING"
+    })
+    .populate("owner", "fullName email") // Show the student's name/email
+    .sort({ createdAt: 1 }); // Show the oldest requests first
+
+    // 3. Send the list
+    return res.status(200).json({
+        message: "Pending documents fetched successfully",
+        documents: pendingDocuments
+    });
+});
+
+
+
+const approveDocument = asyncHandler(async (req, res) => {
+    // 1. Get the document ID from the URL parameters
+    const { documentId } = req.params;
+
+    // 2. Get the issuer's ID and department from the logged-in user
+    const issuerId = req.user._id;
+    const issuerDepartment = req.user.department;
+
+    if (!documentId) {
+        throw new apiError(400, "Document ID is required");
+    }
+
+    // 3. Find the document
+    const document = await Document.findById(documentId);
+
+    if (!document) {
+        throw new apiError(404, "Document not found");
+    }
+
+    // 4. Security Check: Ensure the issuer is from the SAME department as the document
+    // We compare strings because they are ObjectId objects
+    if (document.department.toString() !== issuerDepartment.toString()) {
+        throw new apiError(403, "Forbidden: You are not authorized to approve documents for this department.");
+    }
+
+    // 5. Check if the document is already issued
+    if (document.status === "ISSUED") {
+        throw new apiError(400, "This document has already been issued.");
+    }
+
+    // 6. Update the document
+    document.status = "ISSUED";
+    document.issuer = issuerId; // Stamp the document with the issuer's ID
+    
+    const updatedDocument = await document.save({ validateBeforeSave: true });
+
+    return res.status(200).json(
+        new apiResponse(
+            200,
+            updatedDocument,
+            "Document issued successfully"
+        )
+    );
+});
+
+export { uploadDocument, getPendingDocuments, approveDocument };
