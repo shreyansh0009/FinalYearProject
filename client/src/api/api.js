@@ -17,14 +17,7 @@ export const verifyDocument = async (hash) => {
 };
 
 // Issuer approval - approve a pending document (requires login as issuer)
-export const approveDocument = async (documentId) => {
-  try {
-    const response = await apiClient.patch(`/documents/approve/${documentId}`);
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-};
+
 
 // --- We will add all other API calls here ---
 
