@@ -2,10 +2,12 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { apiError } from "../utils/apiError.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.model.js";
+import { adminContract } from "../utils/ethersService.js";
 import jwt from "jsonwebtoken";
+import { ethers } from "ethers";
 
 const registerUser = asyncHandler(async (req, res) => {
-  const { userName, email, fullName, password, userType, department } =
+  const { userName, email, fullName, password, userType, department, ethereumAddress } =
     req.body;
 
   // 2. Validate core fields
@@ -23,6 +25,18 @@ const registerUser = asyncHandler(async (req, res) => {
     (!department || department.trim() === "")
   ) {
     throw new apiError(400, "Department is required for Students and Issuers");
+  }
+
+  // 4. --- NEW VALIDATION ---
+  // If the user is an ISSUER, their Ethereum wallet address is mandatory
+  if (
+    userType === "ISSUER" &&
+    (!ethereumAddress || !ethers.isAddress(ethereumAddress))
+  ) {
+    throw new apiError(
+      400,
+      "A valid Ethereum address is required for an Issuer"
+    );
   }
 
   // Normalize inputs *before* querying
@@ -44,11 +58,32 @@ const registerUser = asyncHandler(async (req, res) => {
     password,
     username: normalizedUsername,
     userType,
+    ethereumAddress: userType === "ISSUER" ? ethereumAddress : undefined,
   };
 
   // Only add department if it's provided and relevant
   if (userType !== "ADMIN" && department) {
     userToCreate.department = department;
+  }
+
+  // 7. --- NEW BLOCKCHAIN LOGIC ---
+  if (userType === "ISSUER") {
+    try {
+      console.log(`Granting ISSUER role to ${ethereumAddress} on-chain...`);
+      // Call the setIssuer function on the smart contract (address, true)
+      const tx = await adminContract.setIssuer(ethereumAddress, true);
+      await tx.wait(); // Wait for the transaction to be mined
+      console.log(`Role granted. Transaction hash: ${tx.hash}`);
+    } catch (onChainError) {
+      console.error(
+        "On-chain error while adding issuer:",
+        onChainError.message
+      );
+      throw new apiError(
+        500,
+        "Failed to grant on-chain role. Database user not created."
+      );
+    }
   }
 
   const user = await User.create(userToCreate);

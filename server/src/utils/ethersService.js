@@ -2,6 +2,8 @@ import { ethers } from "ethers";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from 'url';
+import dotenv from "dotenv";
+
 
 // --- CONFIGURATION ---
 
@@ -9,6 +11,8 @@ import { fileURLToPath } from 'url';
 // This is a bit complex in ES modules, but it's robust
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, "../../.env")});
 // Navigate two levels up from utils (src/utils -> src -> server) to the root
 const contractInfoPath = path.resolve(__dirname, "..", "..", "contract-info.json");
 
@@ -35,9 +39,9 @@ const provider = new ethers.JsonRpcProvider(RPC_URL);
 const adminWallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
 
 // 3. Initialize the Contract Instance (with Admin read/write access)
-const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, adminWallet);
+const adminContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, adminWallet);
 
 console.log("Ethers service initialized. Connected to contract at:", CONTRACT_ADDRESS);
 
 // 4. Export the contract instance and the provider
-export { contract, provider };
+export { adminContract, provider };

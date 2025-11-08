@@ -46,6 +46,24 @@ const userSchema = mongoose.Schema(
         return this.userType === "ISSUER" || this.userType === "STUDENT";
       },
     },
+    ethereumAddress: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      unique: true,
+      sparse: true, // Allows null values while maintaining uniqueness for non-null values
+      validate: {
+        validator: function(v) {
+          // If provided, must be a valid Ethereum address (42 chars starting with 0x)
+          if (!v) return true; // Allow empty for non-issuers
+          return /^0x[a-fA-F0-9]{40}$/.test(v);
+        },
+        message: 'Invalid Ethereum address format'
+      },
+      required: function () {
+        return this.userType === "ISSUER";
+      },
+    }
   },
   { timestamps: true }
 );
