@@ -5,6 +5,8 @@ import fs from "fs";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { apiError } from "../utils/apiError.js";
 import { apiResponse } from "../utils/apiResponse.js";
+import { adminContract, publicContract } from "../utils/ethersService.js";
+import { ethers } from "ethers";
 
 
 const uploadDocument = asyncHandler(async (req, res) => {
@@ -81,13 +83,20 @@ const approveDocument = asyncHandler(async (req, res) => {
     // 1. Get the document ID from the URL parameters
     const { documentId } = req.params;
 
-    // 2. Get the issuer's ID and department from the logged-in user
-    const issuerId = req.user._id;
-    const issuerDepartment = req.user.department;
-
     if (!documentId) {
         throw new apiError(400, "Document ID is required");
     }
+
+    // 2. Get the issuer's ID and department from the logged-in user
+    const issuerId = req.user._id;
+    const issuerDepartment = req.user.department;
+    const issuerEthAddress = req.user.ethereumAddress;
+
+    if (!issuerEthAddress) {
+        throw new apiError(400, "Issuer account does not have an Ethereum address linked.");
+    }
+
+    
 
     // 3. Find the document
     const document = await Document.findById(documentId);
@@ -107,6 +116,31 @@ const approveDocument = asyncHandler(async (req, res) => {
         throw new apiError(400, "This document has already been issued.");
     }
 
+    // 5. --- NEW BLOCKCHAIN LOGIC ---
+    // Convert the hash string to bytes32 format for Solidity
+    const hashBytes32 = "0x" + document.documentHash;
+
+    try {
+        console.log(`Issuing document hash ${hashBytes32} on-chain for issuer ${issuerEthAddress}...`);
+        
+        // First, check if the address is actually an issuer on-chain
+        const isIssuerOnChain = await adminContract.isIssuer(issuerEthAddress);
+        console.log(`Is ${issuerEthAddress} an issuer on-chain? ${isIssuerOnChain}`);
+        
+        if (!isIssuerOnChain) {
+            throw new apiError(400, "This user is not registered as an issuer on the blockchain. Please re-register the user.");
+        }
+        
+        // Call the smart contract function as the ADMIN (issuing on behalf of the issuer)
+        const tx = await adminContract.issueDocumentOnBehalf(hashBytes32, issuerEthAddress);
+        await tx.wait(); // Wait for the transaction to be mined
+        
+        console.log(`Document hash issued. Transaction: ${tx.hash}`);
+    } catch (onChainError) {
+        console.error("On-chain error while issuing document:", onChainError.message);
+        throw new apiError(500, onChainError.message || "Failed to issue document on-chain.");
+    }
+
     // 6. Update the document
     document.status = "ISSUED";
     document.issuer = issuerId; // Stamp the document with the issuer's ID
@@ -117,21 +151,41 @@ const approveDocument = asyncHandler(async (req, res) => {
         new apiResponse(
             200,
             updatedDocument,
-            "Document issued successfully"
+            "Document issued successfully on-chain and in database"
         )
     );
 });
 
 // Public verification endpoint - no login required
 const verifyDocument = asyncHandler(async (req, res) => {
+
     const { hash } = req.body;
 
-    if (!hash) {
-        throw new apiError(400, "Document hash is required");
+    if (!hash || hash.trim() === "") {
+        throw new apiError(400, "Document hash is required for verification.");
     }
 
+    // Convert string hash to bytes32 format
+    const hashBytes32 = "0x" + hash;
+    let isVerifiedOnChain = false;
+    try {
+        console.log(`Verifying hash on-chain: ${hashBytes32}`);
+        // Call the 'verifyDocument' function on our smart contract
+        isVerifiedOnChain = await publicContract.verifyDocument(hashBytes32);
+        console.log(`On-chain result: ${isVerifiedOnChain}`);
+    } catch (error) {
+        console.error("On-chain verification error:", error.message);
+        throw new apiError(500, "Error while communicating with the blockchain.");
+    }
+
+    // 2. If it's not verified on the blockchain, it's not valid.
+    if (!isVerifiedOnChain) {
+        throw new apiError(404, "Verification Failed: This document is not on the blockchain.");
+    }
+
+
     // Find document by hash
-    const document = await Document.findOne({ documentHash: hash })
+    const document = await Document.findOne({ documentHash: hash, status: "ISSUED" })
         .populate("owner", "fullName email")
         .populate("department", "name")
         .populate("issuer", "fullName");
@@ -167,9 +221,11 @@ const verifyDocument = asyncHandler(async (req, res) => {
                 ownerName: document.owner?.fullName || "Unknown",
                 ownerEmail: document.owner?.email || "N/A",
                 department: document.department?.name || "Unknown",
-                issuedBy: document.issuer?.fullName || "Unknown",
+                issuedBy: document.issuer?.fullName || "Issuing Authority",
                 issuedAt: document.updatedAt,
-                uploadedAt: document.createdAt
+                uploadedAt: document.createdAt,
+                onChain: true,
+                inDatabase: true
             },
             "✅ Document is authentic and verified!"
         )

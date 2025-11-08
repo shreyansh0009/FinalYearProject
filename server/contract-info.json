@@ -1,5 +1,5 @@
 {
-  "address": "0xB431268B6e62AEE6bC344c1C1476C95B8A4bbF7f",
+  "address": "0xFf997e13cA9ef475d6f403f0555A4df452195CBe",
   "abi": [
     {
       "inputs": [],
@@ -104,6 +104,24 @@
         }
       ],
       "name": "issueDocument",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_docHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "_issuerAddress",
+          "type": "address"
+        }
+      ],
+      "name": "issueDocumentOnBehalf",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

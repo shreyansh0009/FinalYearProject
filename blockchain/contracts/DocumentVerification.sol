@@ -78,6 +78,23 @@ contract DocumentVerification {
     }
 
     /**
+     * @dev Admin function to issue a document on behalf of an issuer.
+     * @param _docHash The SHA-256 hash of the document.
+     * @param _issuerAddress The address of the issuer to attribute the document to.
+     */
+    function issueDocumentOnBehalf(bytes32 _docHash, address _issuerAddress) public onlyAdmin {
+        // Ensure the target address is actually an issuer
+        require(isIssuer[_issuerAddress], "Target address is not an issuer");
+        
+        // Ensure the document hasn't already been issued
+        require(documentIssuers[_docHash] == address(0), "Document hash already exists");
+
+        // Store the hash, linking it to the specified issuer's address
+        documentIssuers[_docHash] = _issuerAddress;
+        emit DocumentIssued(_docHash, _issuerAddress);
+    }
+
+    /**
      * @dev Public function to verify a document.
      * Returns the address of the issuer if the hash exists,
      * otherwise returns a "zero address" (0x00...00).

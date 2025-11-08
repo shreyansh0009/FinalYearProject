@@ -41,7 +41,16 @@ const adminWallet = new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
 // 3. Initialize the Contract Instance (with Admin read/write access)
 const adminContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, adminWallet);
 
+// 4. Read-only contract instance (for public verification)
+const publicContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+
 console.log("Ethers service initialized. Connected to contract at:", CONTRACT_ADDRESS);
 
-// 4. Export the contract instance and the provider
-export { adminContract, provider };
+// 5. Helper function to get a contract instance for a specific issuer
+function getIssuerContract(issuerPrivateKey) {
+    const issuerWallet = new ethers.Wallet(issuerPrivateKey, provider);
+    return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, issuerWallet);
+}
+
+// 6. Export the contract instances, provider, and helper
+export { adminContract, publicContract, provider, getIssuerContract, CONTRACT_ADDRESS, CONTRACT_ABI };
