@@ -1,10 +1,13 @@
 import { Router } from "express";
-import { uploadDocument, getPendingDocuments, approveDocument } from "../controllers/document.controller.js";
+import { uploadDocument, getPendingDocuments, approveDocument, verifyDocument } from "../controllers/document.controller.js";
 import { verifyJwt } from "../middlewares/auth.middleware.js";
 import { isIssuer } from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router();
+
+// --- PUBLIC ROUTE (No authentication required) ---
+router.route("/verify").post(verifyDocument);
 
 // This is a protected route. User must be logged in.
 // --- Student Route ---

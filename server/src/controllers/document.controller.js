@@ -122,4 +122,58 @@ const approveDocument = asyncHandler(async (req, res) => {
     );
 });
 
-export { uploadDocument, getPendingDocuments, approveDocument };
+// Public verification endpoint - no login required
+const verifyDocument = asyncHandler(async (req, res) => {
+    const { hash } = req.body;
+
+    if (!hash) {
+        throw new apiError(400, "Document hash is required");
+    }
+
+    // Find document by hash
+    const document = await Document.findOne({ documentHash: hash })
+        .populate("owner", "fullName email")
+        .populate("department", "name")
+        .populate("issuer", "fullName");
+
+    if (!document) {
+        return res.status(404).json(
+            new apiResponse(404, null, "Document not found. This document has not been uploaded to our system.")
+        );
+    }
+
+    // Check if document is issued
+    if (document.status !== "ISSUED") {
+        return res.status(200).json(
+            new apiResponse(
+                200,
+                {
+                    status: document.status,
+                    documentName: document.documentName,
+                    uploadedAt: document.createdAt
+                },
+                "Document found but not yet verified by the issuing authority."
+            )
+        );
+    }
+
+    // Document is verified and issued
+    return res.status(200).json(
+        new apiResponse(
+            200,
+            {
+                status: document.status,
+                documentName: document.documentName,
+                ownerName: document.owner?.fullName || "Unknown",
+                ownerEmail: document.owner?.email || "N/A",
+                department: document.department?.name || "Unknown",
+                issuedBy: document.issuer?.fullName || "Unknown",
+                issuedAt: document.updatedAt,
+                uploadedAt: document.createdAt
+            },
+            "✅ Document is authentic and verified!"
+        )
+    );
+});
+
+export { uploadDocument, getPendingDocuments, approveDocument, verifyDocument };
