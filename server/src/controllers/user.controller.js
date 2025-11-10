@@ -2,6 +2,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { apiError } from "../utils/apiError.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.model.js";
+import { Document } from "../models/document.model.js";
 import { adminContract } from "../utils/ethersService.js";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
@@ -333,4 +334,133 @@ const regrantIssuerRole = asyncHandler(async (req, res) => {
   }
 });
 
-export { registerIssuer, registerStudent, loginUser, logoutUser, refreshAccessToken, regrantIssuerRole };
+// Get all users (Admin only)
+const getAllUsers = asyncHandler(async (req, res) => {
+  try {
+    const users = await User.find()
+      .select('-password -refreshToken')
+      .populate('department', 'name shortCode')
+      .sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      success: true,
+      message: "Users fetched successfully",
+      data: users,
+    });
+  } catch (error) {
+    console.error('getAllUsers error:', error);
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
+
+// Get students registered by the logged-in issuer
+const getMyStudents = asyncHandler(async (req, res) => {
+  try {
+    const students = await User.find({ 
+      registeredBy: req.user._id,
+      userType: 'STUDENT'
+    })
+      .select('-password -refreshToken')
+      .populate('department', 'name shortCode')
+      .sort({ createdAt: -1 });
+    
+    // Fetch documents for each student
+    const studentsWithDocs = await Promise.all(
+      students.map(async (student) => {
+        const documents = await Document.find({ owner: student._id })
+          .select('status documentName createdAt')
+          .sort({ createdAt: -1 });
+        
+        return {
+          ...student.toObject(),
+          documents
+        };
+      })
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: "Students fetched successfully",
+      data: studentsWithDocs,
+    });
+  } catch (error) {
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
+
+// Get all students in issuer's department with their documents
+const getDepartmentStudents = asyncHandler(async (req, res) => {
+  try {
+    // Find all students in the issuer's department
+    const students = await User.find({ 
+      department: req.user.department,
+      userType: 'STUDENT'
+    })
+      .select('-password -refreshToken')
+      .populate('department', 'name shortCode')
+      .sort({ createdAt: -1 });
+    
+    // Fetch documents for each student with detailed info
+    const studentsWithDocs = await Promise.all(
+      students.map(async (student) => {
+        const documents = await Document.find({ owner: student._id })
+          .select('documentName status createdAt issuedAt issuer')
+          .populate('issuer', 'fullName username')
+          .sort({ createdAt: -1 });
+        
+        return {
+          ...student.toObject(),
+          documents,
+          totalDocuments: documents.length,
+          pendingDocuments: documents.filter(d => d.status === 'PENDING').length,
+          issuedDocuments: documents.filter(d => d.status === 'ISSUED').length,
+          rejectedDocuments: documents.filter(d => d.status === 'REJECTED').length
+        };
+      })
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: "Department students fetched successfully",
+      data: studentsWithDocs,
+    });
+  } catch (error) {
+    console.error('getDepartmentStudents error:', error);
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
+
+// Get current user with populated department
+const getCurrentUser = asyncHandler(async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .select('-password -refreshToken')
+      .populate('department', 'name shortCode');
+    
+    if (!user) {
+      throw new apiError(404, "User not found");
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: "User fetched successfully",
+      data: user,
+    });
+  } catch (error) {
+    console.error('getCurrentUser error:', error);
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
+
+export { 
+  registerIssuer, 
+  registerStudent, 
+  loginUser, 
+  logoutUser, 
+  refreshAccessToken, 
+  regrantIssuerRole,
+  getAllUsers,
+  getMyStudents,
+  getDepartmentStudents,
+  getCurrentUser
+};

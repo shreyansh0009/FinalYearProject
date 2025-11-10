@@ -43,6 +43,18 @@ const documentSchema = mongoose.Schema({
         required: true,
         enum: ['PENDING', 'ISSUED', 'REJECTED'],
         default: 'PENDING'
+    },
+
+    issuedAt: {
+        type: Date
+    },
+
+    rejectedAt: {
+        type: Date
+    },
+
+    rejectionReason: {
+        type: String
     }
 }, { timestamps: true });
 

@@ -37,5 +37,18 @@ const createDepartment = asyncHandler(async (req, res) => {
   }
 });
 
+const getAllDepartments = asyncHandler(async (req, res) => {
+  try {
+    const departments = await Department.find().sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      success: true,
+      message: "Departments fetched successfully",
+      data: departments,
+    });
+  } catch (error) {
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
 
-export { createDepartment }
+export { createDepartment, getAllDepartments }

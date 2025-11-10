@@ -46,13 +46,14 @@ const uploadDocument = asyncHandler(async (req, res) => {
         });
 
         return res.status(201).json({
+            success: true,
             message: "Document uploaded successfully and is pending verification.",
-            document
+            data: document
         });
 
     } catch (error) {
         console.error("Error uploading document:", error);
-        return res.status(500).json({ message: "Internal server error during document upload." });
+        return res.status(500).json({ success: false, message: "Internal server error during document upload." });
     }
 })
 
@@ -67,13 +68,15 @@ const getPendingDocuments = asyncHandler(async (req, res) => {
         department: issuerDepartment,
         status: "PENDING"
     })
-    .populate("owner", "fullName email") // Show the student's name/email
+    .populate("owner", "fullName username email") // Show the student's name/email
+    .populate("department", "name shortCode") // Show department info
     .sort({ createdAt: 1 }); // Show the oldest requests first
 
     // 3. Send the list
     return res.status(200).json({
+        success: true,
         message: "Pending documents fetched successfully",
-        documents: pendingDocuments
+        data: pendingDocuments
     });
 });
 
@@ -144,6 +147,7 @@ const approveDocument = asyncHandler(async (req, res) => {
     // 6. Update the document
     document.status = "ISSUED";
     document.issuer = issuerId; // Stamp the document with the issuer's ID
+    document.issuedAt = new Date(); // Set the issued date
     
     const updatedDocument = await document.save({ validateBeforeSave: true });
 
@@ -232,4 +236,83 @@ const verifyDocument = asyncHandler(async (req, res) => {
     );
 });
 
-export { uploadDocument, getPendingDocuments, approveDocument, verifyDocument };
+// Get all documents (Admin only)
+const getAllDocuments = asyncHandler(async (req, res) => {
+  try {
+    const documents = await Document.find()
+      .populate('owner', 'fullName username email')
+      .populate('issuer', 'fullName username email')
+      .populate('department', 'name shortCode')
+      .sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      success: true,
+      message: "Documents fetched successfully",
+      data: documents,
+    });
+  } catch (error) {
+    console.error('getAllDocuments error:', error);
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
+
+// Get documents uploaded by the logged-in student
+const getMyDocuments = asyncHandler(async (req, res) => {
+  try {
+    const documents = await Document.find({ owner: req.user._id })
+      .populate('issuer', 'fullName username email')
+      .populate('department', 'name shortCode')
+      .sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      success: true,
+      message: "Documents fetched successfully",
+      data: documents,
+    });
+  } catch (error) {
+    console.error('getMyDocuments error:', error);
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
+
+// Reject a document (Issuer only)
+const rejectDocument = asyncHandler(async (req, res) => {
+  try {
+    const { documentId } = req.params;
+    const { reason } = req.body;
+    
+    const document = await Document.findById(documentId);
+    
+    if (!document) {
+      throw new apiError(404, "Document not found");
+    }
+    
+    if (document.status !== 'PENDING') {
+      throw new apiError(400, "Document is not pending");
+    }
+    
+    document.status = 'REJECTED';
+    document.rejectionReason = reason || 'No reason provided';
+    document.rejectedAt = new Date();
+    document.issuer = req.user._id;
+    await document.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: "Document rejected successfully",
+      data: document,
+    });
+  } catch (error) {
+    throw new apiError(500, "Internal Server Error! try again after sometime.");
+  }
+});
+
+export { 
+  uploadDocument, 
+  getPendingDocuments, 
+  approveDocument, 
+  verifyDocument,
+  getAllDocuments,
+  getMyDocuments,
+  rejectDocument
+};

@@ -1,13 +1,15 @@
 import React, { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 // Use lazy loading for pages to improve performance
+const HomePage = lazy(() => import('./pages/HomePage.jsx'));
 const PublicVerifyPage = lazy(() => import("./pages/PublicVerifyPage.jsx"));
-// --- Placeholders for your future routes ---
-// const LoginPage = lazy(() => import('./pages/LoginPage'));
-// const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
-// const IssuerDashboard = lazy(() => import('./pages/IssuerDashboard'));
-// const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard.jsx'));
+const IssuerDashboard = lazy(() => import('./pages/IssuerDashboard.jsx'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'));
 
 // A simple loading fallback
 function Loading() {
@@ -20,31 +22,53 @@ function Loading() {
 
 export default function App() {
   return (
-    <Suspense fallback={<Loading />}>
-      <Routes>
-        {/* This is the main page we are building now */}
-        <Route path="/" element={<PublicVerifyPage />} />
+    <AuthProvider>
+      <Suspense fallback={<Loading />}>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<HomePage />} />
+          <Route path="/verify" element={<PublicVerifyPage />} />
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Here is how you will add your other pages.
-          We can build these out later.
-        */}
-        {/* <Route path="/login" element={<LoginPage />} /> */}
-        {/* <Route path="/student/dashboard" element={<StudentDashboard />} /> */}
-        {/* <Route path="/issuer/dashboard" element={<IssuerDashboard />} /> */}
-        {/* <Route path="/admin/dashboard" element={<AdminDashboard />} /> */}
+          {/* Protected Routes */}
+          <Route 
+            path="/student/dashboard" 
+            element={
+              <ProtectedRoute allowedRoles={['STUDENT']}>
+                <StudentDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/issuer/dashboard" 
+            element={
+              <ProtectedRoute allowedRoles={['ISSUER']}>
+                <IssuerDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/dashboard" 
+            element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } 
+          />
 
-        {/* A catch-all route for 404 Not Found pages */}
-        <Route
-          path="*"
-          element={
-            <div className="flex items-center justify-center min-h-screen">
-              <h1 className="text-2xl font-semibold text-gray-700">
-                404: Page Not Found
-              </h1>
-            </div>
-          }
-        />
-      </Routes>
-    </Suspense>
+          {/* A catch-all route for 404 Not Found pages */}
+          <Route
+            path="*"
+            element={
+              <div className="flex items-center justify-center min-h-screen">
+                <h1 className="text-2xl font-semibold text-gray-700">
+                  404: Page Not Found
+                </h1>
+              </div>
+            }
+          />
+        </Routes>
+      </Suspense>
+    </AuthProvider>
   );
 }

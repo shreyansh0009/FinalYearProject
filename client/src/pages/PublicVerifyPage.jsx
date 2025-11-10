@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { verifyDocument } from '../api/api.js';
 import { useFileHash } from '../hooks/useFileHash.js';
 
@@ -67,6 +68,14 @@ export default function PublicVerifyPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 font-sans">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-lg">
+        <div className="flex justify-end">
+          <Link 
+            to="/login" 
+            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+          >
+            Login →
+          </Link>
+        </div>
         <h1 className="text-3xl font-bold text-center text-gray-800">
           Document Verification Portal
         </h1>

@@ -1,7 +1,14 @@
 import { Router } from "express";
-import { uploadDocument, getPendingDocuments, approveDocument, verifyDocument } from "../controllers/document.controller.js";
-import { verifyJwt } from "../middlewares/auth.middleware.js";
-import { isIssuer } from "../middlewares/auth.middleware.js";
+import { 
+  uploadDocument, 
+  getPendingDocuments, 
+  approveDocument, 
+  verifyDocument,
+  getAllDocuments,
+  getMyDocuments,
+  rejectDocument
+} from "../controllers/document.controller.js";
+import { verifyJwt, isIssuer, isAdmin } from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router();
@@ -9,28 +16,21 @@ const router = Router();
 // --- PUBLIC ROUTE (No authentication required) ---
 router.route("/verify").post(verifyDocument);
 
-// This is a protected route. User must be logged in.
-// --- Student Route ---
+// --- Student Routes ---
 router.route("/upload").post(
     verifyJwt,                  // First, verify the user is logged in
     upload.single("document"),  // Then, handle the single file upload
     uploadDocument              // Finally, run the controller logic
 );
 
+router.route("/my-documents").get(verifyJwt, getMyDocuments);
 
-// --- Issuer Route ---
-router.route("/pending").get(
-    verifyJwt,      // First, check if they are logged in
-    isIssuer,       // Then, check if they are an ISSUER
-    getPendingDocuments // If both pass, run the controller
-);
+// --- Issuer Routes ---
+router.route("/pending").get(verifyJwt, isIssuer, getPendingDocuments);
+router.route("/approve/:documentId").patch(verifyJwt, isIssuer, approveDocument);
+router.route("/reject/:documentId").patch(verifyJwt, isIssuer, rejectDocument);
 
-
-// 2. Add the new approve route
-router.route("/approve/:documentId").patch(
-    verifyJwt,
-    isIssuer,
-    approveDocument
-);
+// --- Admin Routes ---
+router.route("/all").get(verifyJwt, isAdmin, getAllDocuments);
 
 export default router;
