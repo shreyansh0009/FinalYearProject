@@ -1,16 +1,23 @@
 import { Router } from "express";
-import { registerUser, loginUser, logoutUser, refreshAccessToken } from "../controllers/user.controller.js";
-import { verifyJwt } from "../middlewares/auth.middleware.js";
+import { registerIssuer, registerStudent, loginUser, logoutUser, refreshAccessToken, regrantIssuerRole } from "../controllers/user.controller.js";
+import { verifyJwt, isAdmin, isIssuer } from "../middlewares/auth.middleware.js";
 
 
 const router = Router();
 
-router.route("/register").post(registerUser);
+// Public routes
 router.route("/login").post(loginUser);
 
-// secured routes...
+// Admin-only routes
+router.route("/register-issuer").post(verifyJwt, isAdmin, registerIssuer);
+router.route("/regrant-issuer-role").post(verifyJwt, isAdmin, regrantIssuerRole);
+
+// Issuer-only routes
+router.route("/register-student").post(verifyJwt, isIssuer, registerStudent);
+
+// Protected routes (any authenticated user)
 router.route("/logout").post(verifyJwt, logoutUser);
-router.route("/refresh-accessToken").post(refreshAccessToken)
+router.route("/refresh-accessToken").post(refreshAccessToken);
 
 
 

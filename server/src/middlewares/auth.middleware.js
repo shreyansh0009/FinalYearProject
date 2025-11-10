@@ -43,3 +43,9 @@ export const isIssuer = (req, res, next) => {
     next();
 };
 
+export const isAdmin = (req, res, next) => {
+    if (req.user?.userType !== "ADMIN") {
+        return res.status(403).json({ message: "Access denied. Admin role required." });
+    }
+    next();
+};

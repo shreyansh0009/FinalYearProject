@@ -6,17 +6,12 @@ import { adminContract } from "../utils/ethersService.js";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
 
-const registerUser = asyncHandler(async (req, res) => {
-  const { userName, email, fullName, password, userType, department, ethereumAddress } =
-    req.body;
-
-  // 2. Validate core fields
-  const coreFields = [userName, email, fullName, password, userType];
+// Helper function for user registration logic
+const createUserAccount = async ({ userName, email, fullName, password, userType, department, ethereumAddress }) => {
+  // Validate core fields
+  const coreFields = [userName, email, fullName, password];
   if (coreFields.some((field) => !field || field.trim() === "")) {
-    throw new apiError(
-      400,
-      "Username, email, fullName, password, and userType are required"
-    );
+    throw new apiError(400, "Username, email, fullName, and password are required");
   }
 
   // Conditionally validate 'department'
@@ -27,16 +22,12 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new apiError(400, "Department is required for Students and Issuers");
   }
 
-  // 4. --- NEW VALIDATION ---
   // If the user is an ISSUER, their Ethereum wallet address is mandatory
   if (
     userType === "ISSUER" &&
     (!ethereumAddress || !ethers.isAddress(ethereumAddress))
   ) {
-    throw new apiError(
-      400,
-      "A valid Ethereum address is required for an Issuer"
-    );
+    throw new apiError(400, "A valid Ethereum address is required for an Issuer");
   }
 
   // Normalize inputs *before* querying
@@ -97,9 +88,47 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new apiError(500, "Something went wrong while registering the user");
   }
 
+  return createdUser;
+};
+
+// Admin-only: Register Issuer
+const registerIssuer = asyncHandler(async (req, res) => {
+  const { userName, email, fullName, password, department, ethereumAddress } = req.body;
+  
+  const createdUser = await createUserAccount({
+    userName,
+    email,
+    fullName,
+    password,
+    userType: "ISSUER",
+    department,
+    ethereumAddress,
+  });
+
   res.status(201).json({
     success: true,
-    message: "User Registered successfully",
+    message: "Issuer registered successfully",
+    data: createdUser,
+  });
+});
+
+// Issuer-only: Register Student
+const registerStudent = asyncHandler(async (req, res) => {
+  const { userName, email, fullName, password, department } = req.body;
+  
+  const createdUser = await createUserAccount({
+    userName,
+    email,
+    fullName,
+    password,
+    userType: "STUDENT",
+    department,
+    ethereumAddress: undefined,
+  });
+
+  res.status(201).json({
+    success: true,
+    message: "Student registered successfully",
     data: createdUser,
   });
 });
@@ -259,4 +288,49 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   }
 });
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken };
+// Re-grant issuer role on blockchain (useful after contract redeployment)
+const regrantIssuerRole = asyncHandler(async (req, res) => {
+  const { ethereumAddress } = req.body;
+
+  if (!ethereumAddress) {
+    throw new apiError(400, "Ethereum address is required");
+  }
+
+  // Find the user by ethereum address
+  const user = await User.findOne({ ethereumAddress: ethereumAddress.toLowerCase() });
+  
+  if (!user) {
+    throw new apiError(404, "User with this Ethereum address not found");
+  }
+
+  if (user.userType !== "ISSUER") {
+    throw new apiError(400, "User is not an issuer");
+  }
+
+  try {
+    console.log(`Re-granting ISSUER role to ${ethereumAddress} on-chain...`);
+    const tx = await adminContract.setIssuer(ethereumAddress, true);
+    await tx.wait();
+    console.log(`Role re-granted. Transaction hash: ${tx.hash}`);
+
+    return res.status(200).json(
+      new apiResponse(
+        200, 
+        { 
+          transactionHash: tx.hash,
+          user: {
+            fullName: user.fullName,
+            email: user.email,
+            ethereumAddress: user.ethereumAddress
+          }
+        }, 
+        "Issuer role re-granted on blockchain successfully"
+      )
+    );
+  } catch (onChainError) {
+    console.error("On-chain error while re-granting issuer role:", onChainError.message);
+    throw new apiError(500, "Failed to grant on-chain role: " + onChainError.message);
+  }
+});
+
+export { registerIssuer, registerStudent, loginUser, logoutUser, refreshAccessToken, regrantIssuerRole };
