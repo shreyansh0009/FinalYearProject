@@ -661,7 +661,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 For questions, suggestions, or support:
 
 - **GitHub Issues**: [Create an issue](https://github.com/shreyansh0009/FinalYearProject/issues)
-- **Email**: shreyansh0009@example.com
+- **Email**: saurabhsharraf@gmail.com
 - **LinkedIn**: [Connect on LinkedIn](https://linkedin.com/in/shreyansh0009)
 
 ---
