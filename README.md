@@ -1,4 +1,5 @@
 # 🔐 Decentralized Automated Document Verification System
+A blockchain-powered document verification system
 
 [![Ethereum](https://img.shields.io/badge/Blockchain-Ethereum-3C3C3D?style=for-the-badge&logo=ethereum)](https://ethereum.org/)
 [![Solidity](https://img.shields.io/badge/Smart_Contract-Solidity-363636?style=for-the-badge&logo=solidity)](https://soliditylang.org/)
