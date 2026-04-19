@@ -2,7 +2,7 @@ import React from 'react';
 
 // This component is only responsible for the form.
 // It is "dumb" and just receives props from its parent page.
-export default function verifyForm({ onFileChange, onSubmit, isLoading, fileIsSelected }) {
+export default function VerifyForm({ onFileChange, onSubmit, isLoading, fileIsSelected }) {
   return (
     <form onSubmit={onSubmit} className="space-y-6">
       <div>

@@ -26,6 +26,11 @@ const documentSchema = mongoose.Schema({
         trim: true
     },
 
+    documentType: {
+        type: String,
+        trim: true
+    },
+
     storageUrl: {
         type: String,
         required: true
@@ -41,7 +46,7 @@ const documentSchema = mongoose.Schema({
     status: {
         type: String,
         required: true,
-        enum: ['PENDING', 'ISSUED', 'REJECTED'],
+        enum: ['PENDING', 'ISSUED', 'REJECTED', 'REVOKED'],
         default: 'PENDING'
     },
 
@@ -54,6 +59,18 @@ const documentSchema = mongoose.Schema({
     },
 
     rejectionReason: {
+        type: String
+    },
+
+    revokedAt: {
+        type: Date
+    },
+
+    transactionHash: {
+        type: String
+    },
+
+    qrCodeUrl: {
         type: String
     }
 }, { timestamps: true });

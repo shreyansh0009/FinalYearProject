@@ -12,6 +12,17 @@ export const useAuth = () => {
   return context;
 };
 
+// Check if a JWT token is expired
+const isTokenExpired = (token) => {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+};
+
 // AuthProvider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -23,7 +34,7 @@ export const AuthProvider = ({ children }) => {
     const storedUser = localStorage.getItem('user');
     const storedToken = localStorage.getItem('accessToken');
     
-    if (storedUser && storedToken) {
+    if (storedUser && storedToken && !isTokenExpired(storedToken)) {
       try {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
@@ -32,7 +43,13 @@ export const AuthProvider = ({ children }) => {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem('user');
         localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
       }
+    } else {
+      // Token expired or missing, clear stale data
+      localStorage.removeItem('user');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
     }
     setIsLoading(false);
   }, []);

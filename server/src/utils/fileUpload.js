@@ -18,11 +18,11 @@ const uploadFile = async (localPath) => {
     fs.unlinkSync(localPath);
     return uploadResult;
   } catch (error) {
+    console.error("Cloudinary upload error:", error.message);
     if (localPath && fs.existsSync(localPath)) {
       fs.unlinkSync(localPath);
     }
     return null;
-    // remove the locally saved file from server if upload got failed and deman user to upload again.
   }
 };
 

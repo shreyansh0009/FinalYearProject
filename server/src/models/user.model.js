@@ -63,6 +63,22 @@ const userSchema = mongoose.Schema(
       required: function () {
         return this.userType === "ISSUER";
       },
+    },
+    phone: {
+      type: String,
+      trim: true,
+      sparse: true,
+      validate: {
+        validator: function(v) {
+          if (!v) return true;
+          return /^\d{10}$/.test(v);
+        },
+        message: 'Phone number must be 10 digits'
+      },
+    },
+    registeredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     }
   },
   { timestamps: true }
@@ -72,7 +88,7 @@ const userSchema = mongoose.Schema(
 // 1. Pre-save hook to hash the password
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 15);
+  this.password = await bcrypt.hash(this.password, 10);
   next();
 });
 

@@ -6,9 +6,24 @@ import { Document } from "../models/document.model.js";
 import { adminContract } from "../utils/ethersService.js";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
+import { sendStudentRegisteredEmail } from "../utils/emailService.js";
+
+// Module-level function to generate access and refresh tokens
+const generateAccessAndRefreshToken = async (userId) => {
+  const loggedInUser = await User.findById(userId);
+  if (!loggedInUser) {
+    throw new apiError(404, "User not found");
+  }
+  const accessToken = await loggedInUser.generateAccessToken();
+  const refreshToken = await loggedInUser.generateRefreshToken();
+
+  loggedInUser.refreshToken = refreshToken;
+  await loggedInUser.save({ validateBeforeSave: false });
+  return { accessToken, refreshToken };
+};
 
 // Helper function for user registration logic
-const createUserAccount = async ({ userName, email, fullName, password, userType, department, ethereumAddress }) => {
+const createUserAccount = async ({ userName, email, fullName, password, userType, department, ethereumAddress, registeredBy, phone }) => {
   // Validate core fields
   const coreFields = [userName, email, fullName, password];
   if (coreFields.some((field) => !field || field.trim() === "")) {
@@ -37,7 +52,7 @@ const createUserAccount = async ({ userName, email, fullName, password, userType
 
   //iii. checking user exists or not?
   const isExists = await User.findOne({
-    $or: [{ userName: normalizedUsername }, { email: normalizedEmail }],
+    $or: [{ username: normalizedUsername }, { email: normalizedEmail }],
   });
   if (isExists) {
     throw new apiError(409, "User already exists!");
@@ -51,6 +66,7 @@ const createUserAccount = async ({ userName, email, fullName, password, userType
     username: normalizedUsername,
     userType,
     ethereumAddress: userType === "ISSUER" ? ethereumAddress : undefined,
+    phone: phone || undefined,
   };
 
   // Only add department if it's provided and relevant
@@ -58,27 +74,32 @@ const createUserAccount = async ({ userName, email, fullName, password, userType
     userToCreate.department = department;
   }
 
-  // 7. --- NEW BLOCKCHAIN LOGIC ---
+  // Track who registered this student
+  if (registeredBy) {
+    userToCreate.registeredBy = registeredBy;
+  }
+
+  // Create the DB user first, then grant blockchain role.
+  // This way if DB creation fails, we never touch the blockchain.
+  const user = await User.create(userToCreate);
+
+  // 7. --- BLOCKCHAIN LOGIC (after DB creation) ---
   if (userType === "ISSUER") {
     try {
       console.log(`Granting ISSUER role to ${ethereumAddress} on-chain...`);
-      // Call the setIssuer function on the smart contract (address, true)
       const tx = await adminContract.setIssuer(ethereumAddress, true);
-      await tx.wait(); // Wait for the transaction to be mined
+      await tx.wait();
       console.log(`Role granted. Transaction hash: ${tx.hash}`);
     } catch (onChainError) {
-      console.error(
-        "On-chain error while adding issuer:",
-        onChainError.message
-      );
+      // Blockchain failed — roll back the DB user to keep data consistent
+      await User.findByIdAndDelete(user._id);
+      console.error("On-chain error while adding issuer:", onChainError.message);
       throw new apiError(
         500,
         "Failed to grant on-chain role. Database user not created."
       );
     }
   }
-
-  const user = await User.create(userToCreate);
 
   //iv. validating user created or not?
   const createdUser = await User.findById(user._id)
@@ -115,8 +136,8 @@ const registerIssuer = asyncHandler(async (req, res) => {
 
 // Issuer-only: Register Student
 const registerStudent = asyncHandler(async (req, res) => {
-  const { userName, email, fullName, password, department } = req.body;
-  
+  const { userName, email, fullName, password, department, phone } = req.body;
+
   const createdUser = await createUserAccount({
     userName,
     email,
@@ -125,7 +146,23 @@ const registerStudent = asyncHandler(async (req, res) => {
     userType: "STUDENT",
     department,
     ethereumAddress: undefined,
+    registeredBy: req.user._id,
+    phone,
   });
+
+  // Send welcome email with credentials (non-fatal if it fails)
+  try {
+    await sendStudentRegisteredEmail({
+      toEmail: email,
+      studentName: fullName,
+      username: userName.toLowerCase(),
+      password,
+      departmentName: createdUser.department?.name || "N/A",
+      registeredByName: req.user.fullName,
+    });
+  } catch (emailError) {
+    console.error("Welcome email failed (non-fatal):", emailError.message);
+  }
 
   res.status(201).json({
     success: true,
@@ -140,12 +177,12 @@ const loginUser = asyncHandler(async (req, res) => {
   const { username, password } = req.body;
 
   //2. checking for empty fields...
-  if ([username, password].some((field) => field?.trim() === "")) {
+  if (!username || !password || username.trim() === "" || password.trim() === "") {
     throw new apiError(400, "Username and password are required!");
   }
 
   //3. finding user in database..
-  const user = await User.findOne({ username }); // checking for both username or password
+  const user = await User.findOne({ username: username.toLowerCase() });
   if (!user) {
     throw new apiError(404, "User doesn't exists");
   }
@@ -154,27 +191,6 @@ const loginUser = asyncHandler(async (req, res) => {
   if (!isPasswordValid) {
     throw new apiError(401, "Invalid user credentials!");
   }
-
-  //4. Generating Access Token
-  const generateAccessAndRefreshToken = async (userId) => {
-    try {
-      const loggedInUser = await User.findById(userId);
-      if (!loggedInUser) {
-        throw new apiError(404, "User not found");
-      }
-      const accessToken = await loggedInUser.generateAccessToken();
-      const refreshToken = await loggedInUser.generateRefreshToken();
-
-      loggedInUser.refreshToken = refreshToken;
-      await loggedInUser.save({ validateBeforeSave: false });
-      return { accessToken, refreshToken };
-    } catch (error) {
-      throw new apiError(
-        500,
-        "Something went wrong while generating access and refresh token"
-      );
-    }
-  };
 
   // we gonna use it many times, that why make a function
   //calling function..
@@ -195,7 +211,7 @@ const loginUser = asyncHandler(async (req, res) => {
   };
 
   return res
-    .status(201)
+    .status(200)
     .cookie("accessToken", accessToken, options)
     .cookie("refreshToken", refreshToken, options)
     .json(
@@ -216,9 +232,7 @@ const logoutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(
     req.user._id,
     {
-      $set: {
-        refreshToken: undefined,
-      },
+      $unset: { refreshToken: "" },
     },
     {
       new: true,
@@ -230,10 +244,10 @@ const logoutUser = asyncHandler(async (req, res) => {
     secure: true,
   };
   return res
-    .status(201)
+    .status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
-    .json(new apiResponse(200, "User logged out successfully!"));
+    .json(new apiResponse(200, {}, "User logged out successfully!"));
 });
 
 // Refreshing access token
@@ -261,7 +275,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       throw new apiError(401, "Invalid user!");
     }
 
-    if (decodedIncomingRefreshToken !== user.refreshToken) {
+    // Compare the raw token string, not the decoded object
+    if (incomingRefreshToken !== user.refreshToken) {
       throw new apiError(401, "Token is invalid or may modified!");
     }
 
@@ -270,13 +285,13 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       secure: true,
     };
 
-    const { accessToken, newRefreshToken } =
+    const { accessToken, refreshToken: newRefreshToken } =
       await generateAccessAndRefreshToken(user._id);
 
     return res
       .status(200)
-      .cookie("accessToken", accessToken)
-      .cookie("refreshToken", newRefreshToken)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
       .json(
         new apiResponse(
           200,
@@ -336,26 +351,18 @@ const regrantIssuerRole = asyncHandler(async (req, res) => {
 
 // Get all users (Admin only)
 const getAllUsers = asyncHandler(async (req, res) => {
-  try {
     const users = await User.find()
       .select('-password -refreshToken')
       .populate('department', 'name shortCode')
       .sort({ createdAt: -1 });
     
-    return res.status(200).json({
-      success: true,
-      message: "Users fetched successfully",
-      data: users,
-    });
-  } catch (error) {
-    console.error('getAllUsers error:', error);
-    throw new apiError(500, "Internal Server Error! try again after sometime.");
-  }
+    return res.status(200).json(
+      new apiResponse(200, users, "Users fetched successfully")
+    );
 });
 
 // Get students registered by the logged-in issuer
 const getMyStudents = asyncHandler(async (req, res) => {
-  try {
     const students = await User.find({ 
       registeredBy: req.user._id,
       userType: 'STUDENT'
@@ -378,19 +385,13 @@ const getMyStudents = asyncHandler(async (req, res) => {
       })
     );
     
-    return res.status(200).json({
-      success: true,
-      message: "Students fetched successfully",
-      data: studentsWithDocs,
-    });
-  } catch (error) {
-    throw new apiError(500, "Internal Server Error! try again after sometime.");
-  }
+    return res.status(200).json(
+      new apiResponse(200, studentsWithDocs, "Students fetched successfully")
+    );
 });
 
 // Get all students in issuer's department with their documents
 const getDepartmentStudents = asyncHandler(async (req, res) => {
-  try {
     // Find all students in the issuer's department
     const students = await User.find({ 
       department: req.user.department,
@@ -419,20 +420,13 @@ const getDepartmentStudents = asyncHandler(async (req, res) => {
       })
     );
     
-    return res.status(200).json({
-      success: true,
-      message: "Department students fetched successfully",
-      data: studentsWithDocs,
-    });
-  } catch (error) {
-    console.error('getDepartmentStudents error:', error);
-    throw new apiError(500, "Internal Server Error! try again after sometime.");
-  }
+    return res.status(200).json(
+      new apiResponse(200, studentsWithDocs, "Department students fetched successfully")
+    );
 });
 
 // Get current user with populated department
 const getCurrentUser = asyncHandler(async (req, res) => {
-  try {
     const user = await User.findById(req.user._id)
       .select('-password -refreshToken')
       .populate('department', 'name shortCode');
@@ -441,15 +435,9 @@ const getCurrentUser = asyncHandler(async (req, res) => {
       throw new apiError(404, "User not found");
     }
     
-    return res.status(200).json({
-      success: true,
-      message: "User fetched successfully",
-      data: user,
-    });
-  } catch (error) {
-    console.error('getCurrentUser error:', error);
-    throw new apiError(500, "Internal Server Error! try again after sometime.");
-  }
+    return res.status(200).json(
+      new apiResponse(200, user, "User fetched successfully")
+    );
 });
 
 export { 

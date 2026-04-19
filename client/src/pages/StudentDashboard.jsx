@@ -1,256 +1,477 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import {
+  FiUploadCloud, FiFolder, FiLogOut, FiShield,
+  FiChevronRight, FiAlertTriangle, FiX, FiCheck,
+  FiExternalLink, FiDownload, FiFile, FiClock,
+  FiCheckCircle, FiXCircle, FiSlash
+} from 'react-icons/fi';
 import { logoutUser, uploadDocument, getMyDocuments, getCurrentUser } from '../api/api';
+
+const NAV_ITEMS = [
+  { id: 'upload',      label: 'Upload Document', icon: FiUploadCloud },
+  { id: 'myDocuments', label: 'My Documents',    icon: FiFolder },
+];
+
+const STATUS_CONFIG = {
+  ISSUED:   { style: 'bg-emerald-50 text-emerald-700 border border-emerald-200', icon: FiCheckCircle, iconClass: 'text-emerald-500' },
+  PENDING:  { style: 'bg-amber-50 text-amber-700 border border-amber-200',       icon: FiClock,        iconClass: 'text-amber-500' },
+  REJECTED: { style: 'bg-red-50 text-red-700 border border-red-200',             icon: FiXCircle,      iconClass: 'text-red-500' },
+  REVOKED:  { style: 'bg-slate-100 text-slate-600 border border-slate-200',      icon: FiSlash,        iconClass: 'text-slate-400' },
+};
+
+function Avatar({ name, size = 'md' }) {
+  const sizes = { sm: 'w-7 h-7 text-xs', md: 'w-9 h-9 text-sm', lg: 'w-11 h-11 text-base' };
+  return (
+    <div className={`${sizes[size]} bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center font-semibold flex-shrink-0`}>
+      {(name || '?').charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+const DOC_TYPES = [
+  'Degree Certificate', 'Marksheet', 'Transcript', 'ID Card', 'Transfer Certificate', 'Other'
+];
+
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  );
+}
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  );
+}
 
 export default function StudentDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  
-  const [activeTab, setActiveTab] = useState('upload');
-  const [myDocuments, setMyDocuments] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const { isDark, toggle: toggleTheme } = useTheme();
 
-  const [uploadForm, setUploadForm] = useState({
-    documentType: '',
-    file: null
-  });
+  const [activeTab, setActiveTab]       = useState('upload');
+  const [myDocuments, setMyDocuments]   = useState([]);
+  const [currentUser, setCurrentUser]   = useState(null);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState('');
+  const [success, setSuccess]           = useState('');
+  const [dragOver, setDragOver]         = useState(false);
+
+  const abortControllerRef = useRef(null);
+  const fileInputRef        = useRef(null);
+
+  const [uploadForm, setUploadForm] = useState({ documentType: '', file: null });
+
+  useEffect(() => { loadCurrentUser(); }, []);
 
   useEffect(() => {
-    loadCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'myDocuments') {
-      loadMyDocuments();
-    }
+    if (activeTab === 'myDocuments') loadMyDocuments();
+    return () => { if (abortControllerRef.current) abortControllerRef.current.abort(); };
   }, [activeTab]);
 
   const loadCurrentUser = async () => {
-    try {
-      const res = await getCurrentUser();
-      setCurrentUser(res.data);
-    } catch (err) {
-      console.error('Load user error:', err);
-    }
+    try { const r = await getCurrentUser(); setCurrentUser(r.data); }
+    catch (err) { console.error('Load user error:', err); }
   };
 
   const loadMyDocuments = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await getMyDocuments();
-      setMyDocuments(res.data || []);
-    } catch (err) {
-      console.error('Load error:', err);
-      setError(err.response?.data?.message || 'Failed to load documents');
-    } finally {
-      setLoading(false);
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
+    setLoading(true); setError('');
+    try { const r = await getMyDocuments(); setMyDocuments(r.data || []); }
+    catch (err) {
+      if (err.name !== 'CanceledError')
+        setError(err.response?.data?.message || 'Failed to load documents');
+    } finally { setLoading(false); }
+  };
+
+  const validateFile = (file) => {
+    if (file.size > 10 * 1024 * 1024) return 'File too large. Maximum size is 10MB.';
+    const allowed = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!allowed.includes(file.type)) return 'Only PDF, JPG, and PNG files are allowed.';
+    return null;
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setUploadForm({ ...uploadForm, file });
-    }
+    if (!file) return;
+    const err = validateFile(file);
+    if (err) { setError(err); return; }
+    setError(''); setUploadForm(f => ({ ...f, file }));
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const err = validateFile(file);
+    if (err) { setError(err); return; }
+    setError(''); setUploadForm(f => ({ ...f, file }));
   };
 
   const handleUpload = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-    setLoading(true);
-    
+    e.preventDefault(); setError(''); setSuccess(''); setLoading(true);
     try {
       const formData = new FormData();
-      formData.append('document', uploadForm.file); // Changed from 'file' to 'document' to match backend
+      formData.append('document', uploadForm.file);
       formData.append('documentType', uploadForm.documentType);
-      
-      console.log('Uploading document...');
-      const response = await uploadDocument(formData);
-      console.log('Upload response:', response);
-      setSuccess('Document uploaded successfully! Awaiting approval.');
+      await uploadDocument(formData);
+      setSuccess('Document uploaded successfully! Awaiting issuer approval.');
       setUploadForm({ documentType: '', file: null });
-      const fileInput = document.getElementById('fileInput');
-      if (fileInput) fileInput.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
-      console.error('Upload error:', err);
       setError(err.response?.data?.message || 'Failed to upload document');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleLogout = async () => {
-    try {
-      await logoutUser();
-      logout();
-      navigate('/');
-    } catch {
-      logout();
-      navigate('/');
-    }
+    try { await logoutUser(); } catch {}
+    logout(); navigate('/');
   };
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'ISSUED': return 'bg-green-100 text-green-800';
-      case 'APPROVED': return 'bg-green-100 text-green-800'; // backward compatibility
-      case 'REJECTED': return 'bg-red-100 text-red-800';
-      default: return 'bg-yellow-100 text-yellow-800';
-    }
-  };
+  const issuedCount   = myDocuments.filter(d => d.status === 'ISSUED').length;
+  const pendingCount  = myDocuments.filter(d => d.status === 'PENDING').length;
+  const rejectedCount = myDocuments.filter(d => d.status === 'REJECTED').length;
+
+  const currentLabel = NAV_ITEMS.find(n => n.id === activeTab)?.label || '';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-green-600 to-emerald-600 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Student Dashboard</h1>
-              <p className="text-green-100 mt-1">Welcome, {currentUser?.fullName || user?.fullName || 'Student'}</p>
-              <p className="text-green-50 text-sm">Email: {currentUser?.email || user?.email || 'N/A'} | Department: {currentUser?.department?.name || 'N/A'}</p>
+    <div className={`flex min-h-screen ${isDark ? 'bg-gray-950' : 'bg-slate-50'}`}>
+
+      {/* ── Sidebar ── */}
+      <aside className={`w-60 flex flex-col sticky top-0 h-screen overflow-y-auto flex-shrink-0 ${isDark ? 'bg-gray-900 border-r border-gray-800' : 'bg-white border-r border-slate-200'}`}>
+        {/* Logo */}
+        <div className="px-5 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
+              <FiShield className="text-white text-sm" />
             </div>
-            <button onClick={handleLogout} className="px-6 py-2 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600">
-              Logout
-            </button>
+            <div>
+              <p className="text-sm font-semibold text-slate-800 leading-tight">DocVerify</p>
+              <p className="text-[11px] text-slate-400">Student Portal</p>
+            </div>
           </div>
         </div>
-      </header>
 
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex space-x-8">
-            {['upload', 'myDocuments'].map((tab) => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${activeTab === tab ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500'}`}>
-                {tab === 'upload' ? 'Upload Document' : 'My Documents'}
-              </button>
-            ))}
-          </nav>
+        {/* Quick stats */}
+        {activeTab === 'myDocuments' && myDocuments.length > 0 && (
+          <div className="px-4 py-3 border-b border-slate-100">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Documents</p>
+            <div className="space-y-1.5">
+              {[
+                { label: 'Issued',   value: issuedCount,   color: 'text-emerald-600' },
+                { label: 'Pending',  value: pendingCount,  color: 'text-amber-600' },
+                { label: 'Rejected', value: rejectedCount, color: 'text-red-500' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">{label}</span>
+                  <span className={`font-semibold ${color}`}>{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5">
+          {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+            <button key={id} onClick={() => setActiveTab(id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${
+                activeTab === id ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+              }`}>
+              <Icon className={`text-base flex-shrink-0 ${activeTab === id ? 'text-emerald-600' : 'text-slate-400'}`} />
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {/* User footer */}
+        <div className="px-4 py-4 border-t border-slate-100 space-y-2">
+          <div className="flex items-center gap-2.5 px-1">
+            <Avatar name={currentUser?.fullName || user?.fullName || 'S'} size="sm" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-slate-800 truncate leading-tight">{currentUser?.fullName || user?.fullName || 'Student'}</p>
+              <p className="text-[11px] text-slate-400 truncate">{currentUser?.department?.name || 'N/A'}</p>
+            </div>
+          </div>
+          <button onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+            <FiLogOut className="text-base" /> Sign out
+          </button>
         </div>
-      </div>
+      </aside>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {error && <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">{error}</div>}
-        {success && <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">{success}</div>}
+      {/* ── Main content ── */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+        <header className={`px-8 py-4 flex items-center gap-2 sticky top-0 z-10 ${isDark ? 'bg-gray-900 border-b border-gray-800' : 'bg-white border-b border-slate-200'}`}>
+          <span className="text-xs text-slate-400">Student</span>
+          <FiChevronRight className="text-xs text-slate-400" />
+          <span className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{currentLabel}</span>
+          <button
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              isDark ? 'bg-gray-800 text-amber-400 hover:bg-gray-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {isDark ? <SunIcon /> : <MoonIcon />}
+            {isDark ? 'Light' : 'Dark'}
+          </button>
+        </header>
 
-        {activeTab === 'upload' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload Document for Verification</h2>
-            <div className="bg-white rounded-lg shadow p-8 max-w-2xl mx-auto">
-              <form onSubmit={handleUpload} className="space-y-6">
+        <main className={`flex-1 overflow-y-auto p-8 ${isDark ? 'text-slate-100' : ''}`}>
+          {error && (
+            <div className="mb-6 flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+              <FiAlertTriangle className="text-base mt-0.5 flex-shrink-0" />
+              <span className="flex-1">{error}</span>
+              <button onClick={() => setError('')}><FiX /></button>
+            </div>
+          )}
+          {success && (
+            <div className="mb-6 flex items-start gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-sm">
+              <FiCheck className="text-base mt-0.5 flex-shrink-0" />
+              <span className="flex-1">{success}</span>
+              <button onClick={() => setSuccess('')}><FiX /></button>
+            </div>
+          )}
+
+          {/* ── UPLOAD ── */}
+          {activeTab === 'upload' && (
+            <div className="space-y-6 max-w-xl">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800 mb-1">Upload Document</h2>
+                <p className="text-sm text-slate-500">Submit a document for blockchain verification</p>
+              </div>
+
+              <form onSubmit={handleUpload} className="space-y-5">
+                {/* Document Type */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Document Type *</label>
-                  <select value={uploadForm.documentType} onChange={(e) => setUploadForm({ ...uploadForm, documentType: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500" required>
-                    <option value="">Select Document Type</option>
-                    <option value="Degree Certificate">Degree Certificate</option>
-                    <option value="Marksheet">Marksheet</option>
-                    <option value="Transcript">Transcript</option>
-                    <option value="ID Card">ID Card</option>
-                    <option value="Transfer Certificate">Transfer Certificate</option>
-                    <option value="Other">Other</option>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Document Type</label>
+                  <select value={uploadForm.documentType}
+                    onChange={e => setUploadForm({ ...uploadForm, documentType: e.target.value })}
+                    className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
+                    required>
+                    <option value="">Select type…</option>
+                    {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
 
+                {/* Drop zone */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Choose File *</label>
-                  <input id="fileInput" type="file" onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500" required />
-                  <p className="mt-2 text-sm text-gray-500">Supported formats: PDF, JPG, PNG (Max: 10MB)</p>
-                  {uploadForm.file && (
-                    <p className="mt-2 text-sm text-green-600">Selected: {uploadForm.file.name}</p>
-                  )}
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">File</label>
+                  <div
+                    onDrop={handleDrop}
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                      dragOver
+                        ? 'border-emerald-400 bg-emerald-50'
+                        : uploadForm.file
+                        ? 'border-emerald-300 bg-emerald-50'
+                        : 'border-slate-300 bg-slate-50 hover:border-emerald-400 hover:bg-emerald-50'
+                    }`}>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileChange}
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      className="hidden"
+                    />
+                    {uploadForm.file ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                          <FiFile className="text-emerald-600 text-xl" />
+                        </div>
+                        <p className="text-sm font-semibold text-emerald-700">{uploadForm.file.name}</p>
+                        <p className="text-xs text-emerald-500">{(uploadForm.file.size / 1024).toFixed(1)} KB · Click to change</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
+                          <FiUploadCloud className="text-slate-400 text-xl" />
+                        </div>
+                        <p className="text-sm font-medium text-slate-600">Drop file here or click to browse</p>
+                        <p className="text-xs text-slate-400">PDF, JPG, PNG — max 10 MB</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <button type="submit" disabled={loading} 
-                  className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-semibold">
-                  {loading ? 'Uploading...' : '�� Upload Document'}
+                <button type="submit" disabled={loading || !uploadForm.file}
+                  className="w-full py-3 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+                  {loading ? (
+                    <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Uploading…</>
+                  ) : <><FiUploadCloud /> Upload Document</>}
                 </button>
               </form>
 
-              <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-semibold text-blue-900 mb-2">📋 Upload Instructions:</h3>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Ensure document is clear and readable</li>
-                  <li>• Select correct document type</li>
-                  <li>• Wait for issuer approval after upload</li>
-                  <li>• Approved documents will be recorded on blockchain</li>
-                </ul>
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-semibold text-slate-600 mb-2">How it works</p>
+                <ol className="text-xs text-slate-500 space-y-1.5">
+                  {[
+                    'Upload your document — it is hashed locally (SHA-256)',
+                    'An issuer from your department reviews and approves it',
+                    'On approval, the hash is recorded permanently on the blockchain',
+                    'Anyone can verify your document using the public portal',
+                  ].map((step, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="w-4 h-4 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center font-bold flex-shrink-0 text-[10px] mt-0.5">{i + 1}</span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'myDocuments' && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">My Documents</h2>
-            {myDocuments.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-8 text-center">
-                <div className="text-6xl mb-4">📄</div>
-                <p className="text-gray-500 text-lg mb-4">No documents uploaded yet</p>
-                <button onClick={() => setActiveTab('upload')} 
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                  Upload Your First Document
-                </button>
+          {/* ── MY DOCUMENTS ── */}
+          {activeTab === 'myDocuments' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800 mb-1">My Documents</h2>
+                <p className="text-sm text-slate-500">{myDocuments.length} document{myDocuments.length !== 1 ? 's' : ''} submitted</p>
               </div>
-            ) : (
-              <div className="grid gap-6">
-                {myDocuments.map((doc) => (
-                  <div key={doc._id} className="bg-white rounded-lg shadow p-6">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-3">
-                          <h3 className="text-lg font-semibold text-gray-900">{doc.documentName}</h3>
-                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(doc.status)}`}>
-                            {doc.status}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
-                          <div>
-                            <p className="font-medium text-gray-700">Uploaded:</p>
-                            <p>{new Date(doc.createdAt).toLocaleDateString()}</p>
+
+              {loading ? (
+                <div className="flex items-center justify-center py-20 text-slate-400 text-sm">Loading…</div>
+              ) : myDocuments.length === 0 ? (
+                <div className="bg-white rounded-xl border border-slate-200 py-20 text-center">
+                  <FiFolder className="text-4xl text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-500 font-medium">No documents yet</p>
+                  <p className="text-slate-400 text-sm mt-1 mb-5">Upload your first document to get started</p>
+                  <button onClick={() => setActiveTab('upload')}
+                    className="px-5 py-2.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700">
+                    Upload Document
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {myDocuments.map(doc => {
+                    const cfg = STATUS_CONFIG[doc.status] || STATUS_CONFIG.PENDING;
+                    const StatusIcon = cfg.icon;
+                    return (
+                      <div key={doc._id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-slate-300 transition-all">
+                        <div className="p-5">
+                          <div className="flex items-start gap-4">
+                            {/* Left: doc icon */}
+                            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <FiFile className="text-slate-500 text-lg" />
+                            </div>
+
+                            {/* Middle: info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <h3 className="text-sm font-semibold text-slate-800 truncate">{doc.documentName}</h3>
+                                {doc.documentType && (
+                                  <span className="px-2 py-0.5 text-[11px] bg-slate-100 text-slate-500 rounded-full">{doc.documentType}</span>
+                                )}
+                                <span className={`px-2.5 py-0.5 text-[11px] font-semibold rounded-full flex items-center gap-1 ${cfg.style}`}>
+                                  <StatusIcon className={`text-xs ${cfg.iconClass}`} /> {doc.status}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-400 mb-3">
+                                <span>Uploaded {new Date(doc.createdAt).toLocaleDateString()}</span>
+                                {doc.status === 'ISSUED' && doc.issuedAt && (
+                                  <span className="text-emerald-600">Issued {new Date(doc.issuedAt).toLocaleDateString()}</span>
+                                )}
+                                {doc.status === 'ISSUED' && doc.issuer && (
+                                  <span className="text-slate-500">by {doc.issuer.fullName}</span>
+                                )}
+                              </div>
+
+                              {/* Status-specific info */}
+                              {doc.status === 'REJECTED' && (
+                                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-lg mb-3">
+                                  <FiAlertTriangle className="text-red-400 flex-shrink-0 mt-0.5 text-sm" />
+                                  <div>
+                                    <p className="text-xs font-semibold text-red-700">Rejection reason</p>
+                                    <p className="text-xs text-red-600 mt-0.5">{doc.rejectionReason || 'No reason provided'}</p>
+                                    {doc.rejectedAt && (
+                                      <p className="text-[11px] text-red-400 mt-1">{new Date(doc.rejectedAt).toLocaleDateString()}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {doc.status === 'REVOKED' && (
+                                <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg mb-3">
+                                  <FiSlash className="text-slate-400 flex-shrink-0 mt-0.5 text-sm" />
+                                  <div>
+                                    <p className="text-xs font-semibold text-slate-600">Document revoked</p>
+                                    {doc.revokedAt && (
+                                      <p className="text-[11px] text-slate-400 mt-0.5">Revoked on {new Date(doc.revokedAt).toLocaleDateString()}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Hash */}
+                              {doc.documentHash && (
+                                <div className="flex items-center gap-2">
+                                  <p className="text-[11px] text-slate-400 font-mono bg-slate-50 px-2 py-1 rounded truncate max-w-xs">
+                                    {doc.documentHash.slice(0, 20)}…{doc.documentHash.slice(-8)}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Blockchain link */}
+                              {doc.transactionHash && (
+                                <a href={`https://amoy.polygonscan.com/tx/${doc.transactionHash}`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 mt-2 text-xs text-violet-600 hover:text-violet-800 font-medium">
+                                  <FiExternalLink className="text-xs" /> View on Polygonscan
+                                </a>
+                              )}
+                            </div>
+
+                            {/* Right: QR + actions */}
+                            <div className="flex flex-col items-center gap-3 flex-shrink-0">
+                              {doc.qrCodeUrl && doc.status === 'ISSUED' && (
+                                <div className="flex flex-col items-center">
+                                  <div className="w-[72px] h-[72px] border border-slate-200 rounded-lg overflow-hidden">
+                                    <img src={doc.qrCodeUrl} alt="QR" className="w-full h-full" />
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 mt-1">Scan to verify</p>
+                                </div>
+                              )}
+                              <div className="flex flex-col gap-1.5">
+                                {doc.storageUrl && (
+                                  <a href={doc.storageUrl} target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                                    <FiExternalLink className="text-xs" /> View
+                                  </a>
+                                )}
+                                {doc.status === 'ISSUED' && doc.storageUrl && (
+                                  <a href={doc.storageUrl} download target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-200">
+                                    <FiDownload className="text-xs" /> Download
+                                  </a>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          {doc.status === 'ISSUED' && doc.issuer && (
-                            <div>
-                              <p className="font-medium text-gray-700">Issued By:</p>
-                              <p>{doc.issuer.fullName}</p>
-                            </div>
-                          )}
-                          {doc.documentHash && (
-                            <div className="col-span-2">
-                              <p className="font-medium text-gray-700">Blockchain Hash:</p>
-                              <p className="text-xs font-mono bg-gray-100 p-2 rounded mt-1 break-all">{doc.documentHash}</p>
-                            </div>
-                          )}
                         </div>
                       </div>
-                      <div className="ml-4 flex flex-col space-y-2">
-                        {doc.storageUrl && (
-                          <a href={doc.storageUrl} target="_blank" rel="noopener noreferrer"
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-center">
-                            📄 View
-                          </a>
-                        )}
-                        {doc.status === 'ISSUED' && (
-                          <a href={doc.storageUrl} download className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-center">
-                            ⬇ Download
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

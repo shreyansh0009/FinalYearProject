@@ -8,7 +8,6 @@ import dotenv from "dotenv";
 // --- CONFIGURATION ---
 
 // 1. Get the path to the contract-info.json file
-// This is a bit complex in ES modules, but it's robust
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -17,9 +16,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env")});
 const contractInfoPath = path.resolve(__dirname, "..", "..", "contract-info.json");
 
 if (!fs.existsSync(contractInfoPath)) {
-    console.error("Fatal Error: contract-info.json not found.");
-    console.error("Please deploy the contract first (run `npx hardhat run scripts/deploy.js --network polygonAmoy` in the /blockchain folder).");
-    process.exit(1);
+    throw new Error("contract-info.json not found. Please deploy the contract first (run `npx hardhat run scripts/deploy.js --network polygonAmoy` in the /blockchain folder).");
 }
 
 const contractInfo = JSON.parse(fs.readFileSync(contractInfoPath));
@@ -30,8 +27,7 @@ const RPC_URL = process.env.POLYGON_AMOY_RPC_URL;
 const ADMIN_PRIVATE_KEY = process.env.CONTRACT_ADMIN_PRIVATE_KEY;
 
 if (!RPC_URL || !ADMIN_PRIVATE_KEY || !CONTRACT_ADDRESS || !CONTRACT_ABI) {
-    console.error("Missing required environment variables (RPC_URL, ADMIN_PRIVATE_KEY) or contract info.");
-    process.exit(1);
+    throw new Error("Missing required environment variables (RPC_URL, ADMIN_PRIVATE_KEY) or contract info.");
 }
 
 // 2. Initialize the Provider and Signer (Admin Wallet)

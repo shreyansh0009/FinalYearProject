@@ -1,0 +1,85 @@
+// Smart contract address and ABI for the DocumentVerification contract
+// deployed on Polygon Amoy testnet
+
+export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "0xDBfd73aB895C94184Dcd8555327aE2b41D667c5D";
+
+export const CONTRACT_ABI = [
+  {
+    "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "bytes32", "name": "docHash", "type": "bytes32" },
+      { "indexed": true, "internalType": "address", "name": "issuer", "type": "address" }
+    ],
+    "name": "DocumentIssued",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "address", "name": "issuerAddress", "type": "address" },
+      { "indexed": false, "internalType": "bool", "name": "isIssuer", "type": "bool" }
+    ],
+    "name": "IssuerToggled",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "admin",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }],
+    "name": "documentIssuers",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "name": "isIssuer",
+    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "bytes32", "name": "_docHash", "type": "bytes32" }],
+    "name": "issueDocument",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "_docHash", "type": "bytes32" },
+      { "internalType": "address", "name": "_issuerAddress", "type": "address" }
+    ],
+    "name": "issueDocumentOnBehalf",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "_issuerAddress", "type": "address" },
+      { "internalType": "bool", "name": "_isIssuer", "type": "bool" }
+    ],
+    "name": "setIssuer",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{ "internalType": "bytes32", "name": "_docHash", "type": "bytes32" }],
+    "name": "verifyDocument",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  }
+];

@@ -19,6 +19,9 @@ contract DocumentVerification {
     // to the address that issued it.
     mapping(bytes32 => address) public documentIssuers;
 
+    // Track revoked documents
+    mapping(bytes32 => bool) public documentRevoked;
+
     // --- Events ---
 
     // Emitted when an issuer is added or removed
@@ -26,6 +29,12 @@ contract DocumentVerification {
     
     // Emitted when a new document hash is added
     event DocumentIssued(bytes32 indexed docHash, address indexed issuer);
+
+    // Emitted when admin is transferred
+    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
+
+    // Emitted when a document is revoked
+    event DocumentRevoked(bytes32 indexed docHash);
 
     // --- Modifiers ---
 
@@ -52,6 +61,18 @@ contract DocumentVerification {
      */
     constructor() {
         admin = msg.sender;
+    }
+
+    /**
+     * @dev Admin function to transfer admin role to a new address.
+     * @param _newAdmin The address of the new admin.
+     */
+    function transferAdmin(address _newAdmin) public onlyAdmin {
+        require(_newAdmin != address(0), "New admin cannot be zero address");
+        require(_newAdmin != admin, "New admin cannot be the same address");
+        address previousAdmin = admin;
+        admin = _newAdmin;
+        emit AdminTransferred(previousAdmin, _newAdmin);
     }
 
     /**
@@ -95,13 +116,36 @@ contract DocumentVerification {
     }
 
     /**
+     * @dev Admin function to revoke a document.
+     * @param _docHash The SHA-256 hash of the document to revoke.
+     */
+    function revokeDocument(bytes32 _docHash) public onlyAdmin {
+        require(documentIssuers[_docHash] != address(0), "Document does not exist");
+        require(!documentRevoked[_docHash], "Document already revoked");
+        documentRevoked[_docHash] = true;
+        emit DocumentRevoked(_docHash);
+    }
+
+    /**
      * @dev Public function to verify a document.
-     * Returns the address of the issuer if the hash exists,
+     * Returns the address of the issuer if the hash exists and is not revoked,
      * otherwise returns a "zero address" (0x00...00).
      * @param _docHash The SHA-256 hash to check.
-     * @return The address of the issuer.
+     * @return The address of the issuer (zero if not found or revoked).
      */
     function verifyDocument(bytes32 _docHash) public view returns (address) {
+        if (documentRevoked[_docHash]) {
+            return address(0);
+        }
         return documentIssuers[_docHash];
+    }
+
+    /**
+     * @dev Public function to check if a document has been revoked.
+     * @param _docHash The SHA-256 hash to check.
+     * @return True if revoked, false otherwise.
+     */
+    function isDocumentRevoked(bytes32 _docHash) public view returns (bool) {
+        return documentRevoked[_docHash];
     }
 }

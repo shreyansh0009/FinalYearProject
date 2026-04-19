@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create an Axios instance
 const apiClient = axios.create({
-  baseURL: "http://localhost:8000/api/v1",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1",
   withCredentials: true, // This is important for sending cookies
 });
 
@@ -20,14 +20,82 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Add response interceptor to handle 401 errors with token refresh
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If 401 and not already retried, try to refresh the token
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't retry login or refresh requests
+      if (originalRequest.url?.includes('/login') || originalRequest.url?.includes('/refresh-accessToken')) {
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        // Queue the request until refresh is done
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return apiClient(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const response = await apiClient.post("/users/refresh-accessToken", {
+          refreshToken: localStorage.getItem("refreshToken"),
+        });
+        const { accessToken, refreshToken } = response.data.data;
+
+        localStorage.setItem("accessToken", accessToken);
+        localStorage.setItem("refreshToken", refreshToken);
+
+        processQueue(null, accessToken);
+
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        // Clear auth state and redirect to login
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 // Public verification - check if document exists by hash (no login required)
 export const verifyDocument = async (hash) => {
-  try {
-    const response = await apiClient.post("/documents/verify", { hash });
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
+  const response = await apiClient.post("/documents/verify", { hash });
+  return response.data;
 };
 
 // Issuer approval - approve a pending document (requires login as issuer)
@@ -103,6 +171,22 @@ export const getAllUsers = async () => {
 
 export const getAllDocuments = async () => {
   const response = await apiClient.get("/documents/all");
+  return response.data;
+};
+
+export const revokeDocument = async (documentId) => {
+  const response = await apiClient.patch(`/documents/revoke/${documentId}`);
+  return response.data;
+};
+
+// Called after issuer signs issueDocument() directly from their wallet
+export const approveDocumentDirect = async (documentId, txHash) => {
+  const response = await apiClient.patch(`/documents/approve-direct/${documentId}`, { txHash });
+  return response.data;
+};
+
+export const getAnalytics = async () => {
+  const response = await apiClient.get("/documents/analytics");
   return response.data;
 };
 

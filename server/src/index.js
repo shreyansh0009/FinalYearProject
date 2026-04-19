@@ -12,21 +12,12 @@ import { app } from "./app.js";
 
 connectDB()
   .then(() => {
-    app.on("error", (err) => {
-      console.log("Error: ", err);
-      throw err;
-    });
-    app.listen(process.env.PORT || 8000, () => {
-      console.log(`⚙️ Server is listning on port: ${process.env.PORT}`);
-    });
-    app.get("/", (req, res) => {
-      try {
-        res.send("Database Connected!!");
-      } catch (error) {
-        console.log(error);
-      }
+    const PORT = process.env.PORT || 8000;
+    app.listen(PORT, () => {
+      console.log(`Server is running on port: ${PORT}`);
     });
   })
   .catch((err) => {
-    console.log("Mongo connection failed! ", err);
+    console.error("Mongo connection failed!", err);
+    process.exit(1);
   });

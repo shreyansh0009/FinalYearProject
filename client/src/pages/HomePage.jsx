@@ -349,7 +349,7 @@ export default function HomePage() {
           {/* Bottom Bar */}
           <div className="border-t border-gray-800 pt-8 text-center">
             <p className="text-gray-400">
-              © 2025 Decentralized Document Verification. Built with Blockchain Technology.
+              © {new Date().getFullYear()} Decentralized Document Verification. Built with Blockchain Technology.
             </p>
             <p className="text-gray-500 text-sm mt-2">
               Secure • Transparent • Immutable
